@@ -1,408 +1,513 @@
 /*
-	Kailash Nadh (http://kailashnadh.name)
-	
-	localStorageDB
-	September 2011
-	A simple database layer for localStorage
+ * @autor Ricardo Sismeiro
+ * @credits  Kailash Nadh (http://kailashnadh.name) 
+ * 
+ * @license http://www.gnu.org/licenses/gpl-3.0-standalone.html
+ *
+ */
+(function(o){
+    var _ = {
 
-	License	:	MIT License
-*/
+        db_id : null,
+        db_prefix : null,
+        db_new: false,
+        db: null,
 
-function localStorageDB(db_name) {
+        /**
+         * constructor
+         */
+        o: function(){
+            if (typeof(localStorage)==="undefined") {
+                _._error('Ups... localStorage not found!');
+            }
+            if (arguments.length>0){
+                _._init(arguments[0]);
+            }
+            return _;
+        },
 
-	var db_prefix = 'db_',
-		db_id = db_prefix + db_name,
-		db_new = false,	// this flag determines whether a new database was created during an object initialisation
-		db = null;
+        /**
+         * initialization
+         */
+        _init : function(name){
+            _.db_prefix = 'db_';
+            _.db_id = _.db_prefix + _._vname(name);
+            _.db_new = false;
+            _.db = localStorage[_.db_id];
+            if( !( _.db && (_.db = JSON.parse(_.db)) && _.db.tables && _.db.data ) ) {
+                _.db = {
+                    tables: {},
+                    data: {}
+                };
+                _._commit();
+                _.db_new = true;
+            }
+        },
 
-	// if the database doesn't exist, create it
-	db = localStorage[ db_id ];
-	if( !( db && (db = JSON.parse(db)) && db.tables && db.data ) ) {
-		if(!validateName(db_name)) {
-			error("The name '" + db_name + "'" + " contains invalid characters.");
-		} else {
-			db = {tables: {}, data: {}};
-			commit();
-			db_new = true;
-		}
-	}
-	
-	
-	// ______________________ private methods
-	
-	// _________ database functions
-	// drop the database
-	function drop() {
-		delete localStorage[db_id];
-		db = null;
-	}
-			
-	// number of tables in the database
-	function tableCount() {
-		var count = 0;
-		for(var table in db.tables) {
-			count++;
-		}
-		return count;
-	}
+        _vname : function(name){            
+            return name.replace(/[^a-z_0-9]/ig,'');
+        },
 
-	// _________ table functions
-	
-	// check whether a table exists
-	function tableExists(table_name) {
-		return db.tables[table_name] ? true : false;
-	}
-	
-	// check whether a table exists, and if not, throw an error
-	function tableExistsWarn(table_name) {
-		if(!tableExists(table_name)) {
-			error("The table '" + table_name + "' does not exist.");
-		}
-	}
-		
-	// create a table
-	function createTable(table_name, fields) {
-		db.tables[table_name] = {fields: fields, auto_increment: 1};
-		db.data[table_name] = {};
-	}
-	
-	// drop a table
-	function dropTable(table_name) {
-		delete db.tables[table_name];
-		delete db.data[table_name];
-	}
-	
-	// empty a table
-	function truncate(table_name) {
-		db.tables[table_name].auto_increment = 1;
-		db.data[table_name] = {};
-	}
-	
-	// number of rows in a table
-	function rowCount(table_name) {
-		var count = 0;
-		for(var ID in db.data[table_name]) {
-			count++;
-		}
-		return count;
-	}
-	
-	// insert a new row
-	function insert(table_name, data) {
-		data.ID = db.tables[table_name].auto_increment;
-		db.data[table_name][ db.tables[table_name].auto_increment ] = data;
-		db.tables[table_name].auto_increment++;
-		return data.ID;
-	}
-	
-	// select rows, given a list of IDs of rows in a table
-	function select(table_name, ids) {
-		var ID = null, results = [], row = null;
-		for(var i in ids) {
-			ID = ids[i];
-			row = db.data[table_name][ID];
-			results.push( clone(row) );
-		}
-		return results;
-	}
-	
-	// select rows in a table by field-value pairs, returns the IDs of matches
-	function queryByValues(table_name, data, limit) {
-		var result_ids = [],
-			exists = false,
-			row = null;
+        log : function(data){
+            console.log(data);
+        },
 
-		// loop through all the records in the table, looking for matches
-		for(var ID in db.data[table_name]) {
-			row = db.data[table_name][ID];
-			exists = false;
+        /**
+         * throw an error
+         * @access private
+         */
+        _error: function(msg) {
+            throw new Error(msg);
+        },
 
-			for(var field in data) {
-				if(typeof data[field] == 'string') {	// if the field is a string, do a case insensitive comparison
-					if( row[field].toString().toLowerCase() == data[field].toString().toLowerCase() ) {
-						exists = true;
-						break;
-					}
-				} else {
-					if( row[field] == data[field] ) {
-						exists = true;
-						break;
-					}
-				}
-			}
-			if(exists) {
-				result_ids.push(ID);
-			}
-			if(result_ids.length == limit) {
-				break;
-			}
-		}
-		return result_ids;
-	}
-	
-	// select rows in a table by a function, returns the IDs of matches
-	function queryByFunction(table_name, query_function, limit) {
-		var result_ids = [],
-			exists = false,
-			row = null;
+        /**
+         * drop the database
+         * @access private
+         */
+        _drop : function(){
+            delete localStorage[_.db_id];
+            _.db = null;
+        },
 
-		// loop through all the records in the table, looking for matches
-		for(var ID in db.data[table_name]) {
-			row = db.data[table_name][ID];
+        /**
+         * number of tables in the database
+         * @access private
+         * @return int
+         */
+        _tableCount : function(){
+            var count = 0;
+            for(var table in _.db.tables) {
+                count++;
+            }
+            return count;
+        },
 
-			if( query_function( clone(row) ) == true ) {	// it's a match if the supplied conditional function is satisfied
-				result_ids.push(ID);
-			}
-			if(result_ids.length == limit) {
-				break;
-			}
-		}
-		return result_ids;
-	}
-	
-	// return all the IDs in a table
-	function getIDs(table_name, limit) {
-		var result_ids = [];
-		for(var ID in db.data[table_name]) {
-			result_ids.push(ID);
-			
-			if(result_ids.length == limit) {
-				break;
-			}
-		}
-		return result_ids;
-	}
-	
-	// delete rows, given a list of their IDs in a table
-	function deleteRows(table_name, ids) {
-		for(var i in ids) {
-			delete db.data[table_name][ ids[i] ];
-		}
-		return ids.length;
-	}
-	
-	// update rows
-	function update(table_name, ids, update_function) {
-		var ID = '', num = 0;
+        /**
+         * check whether a table exists
+         * @access private
+         * @return bool
+         */
+        _tableExists : function (tableName){
+            return _.db.tables[tableName] ? true : false;
+        },
 
-		for(var i in ids) {
-			ID = ids[i];
+        /**
+         * check whether a table exists, and if not, throw an error
+         * @access private
+         */
+        _tableExistsWarn : function (tableName){
+            if(!_._tableExists(tableName)) {
+                _._error("The table '" + tableName + "' does not exist.");
+            }
+        },
 
-			var updated_data = update_function( clone(db.data[table_name][ID]) );
-			
-			if(updated_data) {
-				delete updated_data['ID']; // no updates possible to ID
+        /**
+         * create a table
+         * @access private
+         */
+        _createTable : function (tableName, fields) {
+            _.db.tables[tableName] = {
+                fields: fields,
+                auto_increment: 1
+            };
+            _.db.data[tableName] = {};
+            _._commit();
+        },
 
-				var new_data = db.data[table_name][ID];				
-				// merge updated data with existing data
-				for(var field in updated_data) {
-					new_data[field] = updated_data[field];
-				}
+        /**
+         * drop a table
+         * @access private
+         */
+        _dropTable : function(tableName) {
+            delete _.db.tables[tableName];
+            delete _.db.data[tableName];
+            _._commit();
+        },
 
-				db.data[table_name][ID] = validFields(table_name, new_data);
-				num++;
-			}
-		}
-		return num;
-	}
-	
+        /**
+         * empty a table
+         * @access private
+         */
+        _truncate : function (tableName) {
+            _.db.tables[tableName].auto_increment = 1;
+            _.db.data[tableName] = {};
+            _._commit();
+        },
 
+        /**
+         * number of rows in a table
+         * @access private
+         * @return int
+         */
+        _rowCount : function (tableName) {
+            var count = 0;
+            for(var ID in _.db.data[tableName]) {
+                count++;
+            }
+            return count;
+        },
 
-	// commit the database to localStorage
-	function commit() {
-		localStorage[db_id] = JSON.stringify(db);
-	}
-	
-	// serialize the database
-	function serialize() {
-		return JSON.stringify(db);
-	}
-	
-	// throw an error
-	function error(msg) {
-		throw new Error(msg);
-	}
-	
-	// clone an object
-	function clone(obj) {
-		var new_obj = {};
-		for(var key in obj) {
-			new_obj[key] = obj[key];
-		}
-		return new_obj;
-	}
-	
-	// validate db, table, field names (alpha-numeric only)
-	function validateName(name) {
-		return name.match(/[^a-z_0-9]/ig) ? false : true;
-	}
-	
-	// given a data list, only retain valid fields in a table
-	function validFields(table_name, data) {
-		var field = '', new_data = {};
-		for(var i in db.tables[table_name].fields) {
-			field = db.tables[table_name].fields[i];
-			
-			if(data[field]) {
-				new_data[field] = data[field];
-			}
-		}
-		return new_data;
-	}
-	
-	// given a data list, populate with valid field names of a table
-	function validateData(table_name, data) {
-		var field = '', new_data = {};
-		for(var i in db.tables[table_name].fields) {
-			field = db.tables[table_name].fields[i];
-			new_data[field] = data[field] ? data[field] : null;
-		}
-		return new_data;
-	}
-	
+        /**
+         * insert a new row
+         * @access private
+         */
+        _insert : function (tableName, data) {
+            data.ID = _.db.tables[tableName].auto_increment;
+            _.db.data[tableName][ _.db.tables[tableName].auto_increment ] = data;
+            _.db.tables[tableName].auto_increment++;
+            _._commit();
+            return data.ID;
+        },
 
+        /**
+         * select rows, given a list of IDs of rows in a table
+         * @access private
+         */
+        _select : function(tableName, ids) {
+            var ID = null, results = [], row = null;
+            for(var i in ids) {
+                ID = ids[i];
+                row = _.db.data[tableName][ID];
+                results.push( _._clone(row));
+            }
+            return results;
+        },
 
-	// ______________________ public methods
+        /**
+         * select rows in a table by field-value pairs, returns the IDs of matches
+         * @access private
+         */
+        _queryByValues : function(tableName, data, limit) {
+            var result_ids = [],
+            exists = false,
+            row = null;
+            for(var ID in _.db.data[tableName]) {                               //loop through all the records in the table, looking for matches
+                row = _.db.data[tableName][ID];
+                exists = false;
+                for(var field in data) {
+                    if(typeof data[field] == 'string') {	                //if the field is a string, do a case insensitive comparison
+                        if( row[field].toString().toLowerCase() == data[field].toString().toLowerCase() ) {
+                            exists = true;
+                            break;
+                        }
+                    } else {
+                        if( row[field] == data[field] ) {
+                            exists = true;
+                            break;
+                        }
+                    }
+                }
+                if(exists) {
+                    result_ids.push(ID);
+                }
+                if(result_ids.length == limit) {
+                    break;
+                }
+            }
+            return result_ids;
+        },
 
-	return {
-		// commit the database to localStorage
-		commit: function() {
-			commit();
-		},
-		
-		// is this instance a newly created database?
-		isNew: function() {
-			return db_new;
-		},
-		
-		// delete the database
-		drop: function() {
-			drop();
-		},
-		
-		// serialize the database
-		serialize: function() {
-			return serialize();
-		},
-		
-		// check whether a table exists
-		tableExists: function(table_name) {
-			return tableExists(table_name);
-		},
-		
-		// number of tables in the database
-		tableCount: function() {
-			return tableCount();
-		},
-		
-		// create a table
-		createTable: function(table_name, fields) {
-			var result = false;
-			if(!validateName(table_name)) {
-				error("The database name '" + table_name + "'" + " contains invalid characters.");
-			} else if(this.tableExists(table_name)) {
-				error("The table name '" + table_name + "' already exists.");
-			} else {
-				// make sure field names are valid
-				var is_valid = true;
-				for(var i in fields) {
-					if(!validateName(fields[i])) {
-						is_valid = false;
-						break;
-					}
-				}
-				
-				if(is_valid) {
-					// cannot use indexOf due to <IE9 incompatibility
-					// de-duplicate the field list
-					var fields_literal = {};
-					for(var i in fields) {
-						fields_literal[ fields[i] ] = true;
-					}
-					delete fields_literal['ID']; // ID is a reserved field name
+        /**
+         * select rows in a table by a function, returns the IDs of matches
+         * @access private
+         */
+        _queryByFunction : function (tableName, queryFunction, limit) {
+            var result_ids = [],
+            row = null;
+            for(var ID in _.db.data[tableName]) {                               //loop through all the records in the table, looking for matches
+                row = _.db.data[tableName][ID];
+                if( queryFunction( _._clone(row) ) == true ) {	                //it's a match if the supplied conditional function is satisfied
+                    result_ids.push(ID);
+                }
+                if(result_ids.length == limit) {
+                    break;
+                }
+            }
+            return result_ids;
+        },
 
-					fields = ['ID'];
-					for(var field in fields_literal) {
-						fields.push(field);
-					}
+        /**
+         * return all the IDs in a table
+         * @access private
+         */
+        _getIDs : function (tableName, limit) {
+            var result_ids = [];
+            for(var ID in _.db.data[tableName]){
+                result_ids.push(ID);
+                if(result_ids.length == limit){
+                    break;
+                }
+            }
+            return result_ids;
+        },
 
-					createTable(table_name, fields);
-					result = true;
-				} else {
-					error("One or more field names in the table definition contains invalid characters.");
-				}
-			}
+        /**
+         * delete rows, given a list of their IDs in a table
+         * @access private
+         */
+        _deleteRows : function (tableName, ids) {
+            for(var i in ids) {
+                delete _.db.data[tableName][ ids[i] ];
+            }
+            _._commit();
+            return ids.length;
+        },
 
-			return result;
-		},
-		
-		// drop a table
-		dropTable: function(table_name) {
-			tableExistsWarn(table_name);
-			dropTable(table_name);
-		},
-		
-		// empty a table
-		truncate: function(table_name) {
-			tableExistsWarn(table_name);
-			truncate(table_name);
-		},
-		
-		// number of rows in a table
-		rowCount: function(table_name) {
-			tableExistsWarn(table_name);
-			return rowCount(table_name);
-		},
-		
-		// insert a row
-		insert: function(table_name, data) {
-			tableExistsWarn(table_name);
-			return insert(table_name, validateData(table_name, data) );
-		},
-		
-		// update rows
-		update: function(table_name, query, update_function) {
-			tableExistsWarn(table_name);
+        /**
+         * update rows
+         * @access private
+         */
+        _update : function(tableName, ids, updateFunction) {
+            var ID = '', num = 0;
 
-			var result_ids = [];
-			if(!query) {
-				result_ids = getIDs(table_name);				// there is no query. applies to all records
-			} else if(typeof query == 'object') {				// the query has key-value pairs provided
-				result_ids = queryByValues(table_name, validFields(table_name, query));
-			} else if(typeof query == 'function') {				// the query has a conditional map function provided
-				result_ids = queryByFunction(table_name, query);
-			}
-			return update(table_name, result_ids, update_function);
-		},
+            for(var i in ids) {
+                ID = ids[i];
 
-		// select rows
-		query: function(table_name, query, limit) {
-			tableExistsWarn(table_name);
-			
-			var result_ids = [];
-			if(!query) {
-				result_ids = getIDs(table_name, limit); // no conditions given, return all records
-			} else if(typeof query == 'object') {			// the query has key-value pairs provided
-				result_ids = queryByValues(table_name, validFields(table_name, query), limit);
-			} else if(typeof query == 'function') {		// the query has a conditional map function provided
-				result_ids = queryByFunction(table_name, query, limit);
-			}
-			return select(table_name, result_ids, limit);
-		},
+                var updatedData = updateFunction( _._clone(_.db.data[tableName][ID]) );
 
-		// delete rows
-		deleteRows: function(table_name, query) {
-			tableExistsWarn(table_name);
+                if(updatedData) {
+                    delete updatedData['ID'];                                   // no updates possible to ID
+                    var newData = _.db.data[tableName][ID];
+                    for(var field in updatedData) {                             // merge updated data with existing data
+                        newData[field] = updatedData[field];
+                    }
 
-			var result_ids = [];
-			if(!query) {
-				result_ids = getIDs(table_name);
-			} else if(typeof query == 'object') {
-				result_ids = queryByValues(table_name, validFields(table_name, query));
-			} else if(typeof query == 'function') {
-				result_ids = queryByFunction(table_name, query);
-			}
-			return deleteRows(table_name, result_ids);
-		}
-	}
-}
+                    _.db.data[tableName][ID] = _._validFields(tableName, newData);
+                    num++;
+                }
+            }
+            if (num>0){
+                _._commit();
+            }
+            return num;
+        },
+
+        /**
+         * commit the database to localStorage
+         * @access private
+         */
+        _commit : function() {
+            try {
+                localStorage.setItem(_.db_id,JSON.stringify(_.db));
+            } catch (e) {
+                _._error()
+            }
+        },
+
+        /**
+         * serialize the database
+         * @access private
+         */
+        _serialize : function () {
+            return JSON.stringify(_.db);
+        },
+
+        /**
+         * clone an object
+         * @access private
+         */
+        _clone : function (obj) {
+            var new_obj = {};
+            for(var key in obj) {
+                new_obj[key] = obj[key];
+            }
+            return new_obj;
+        },
+
+        /**
+         * given a data list, only retain valid fields in a table
+         * @access private
+         */
+        _validFields : function (tableName, data) {
+            var field = '', newData = {};
+            for(var i in _.db.tables[tableName].fields) {
+                field = _.db.tables[tableName].fields[i];
+                if(data[field]) {
+                    newData[field] = data[field];
+                }
+            }
+            return newData;
+        },
+
+        /**
+         * given a data list, populate with valid field names of a table
+         * @access private
+         */
+        _validateData : function (tableName, data) {
+            var field = '', newData = {};
+            for(var i in _.db.tables[tableName].fields) {
+                field = _.db.tables[tableName].fields[i];
+                newData[field] = data[field] ? data[field] : null;
+            }
+            return newData;
+        },
+
+        /**
+         * commit the database to localStorage
+         * @access public
+         */
+        commit: function() {
+            _._commit()
+        },
+
+        /**
+         * is this instance a newly created database?
+         * @access public
+         */
+        isNew: function() {
+            return _.db_new;
+        },
+
+        /**
+         * delete the database
+         * @access public
+         */
+        drop: function() {
+            _._drop();
+        },
+
+        /**
+         * serialize the database
+         * @access public
+         */
+        serialize: function() {
+            return _._serialize();
+        },
+
+        /**
+         * check whether a table exists
+         * @access public
+         */
+        tableExists: function(tableName) {
+            return _._tableExists(tableName);
+        },
+
+        /**
+         * number of tables in the database
+         * @access public
+         */
+        tableCount: function() {
+            return _._tableCount();
+        },
+
+        /**
+         * create a table
+         * @access public
+         */
+        createTable: function(tableName, fields) {
+            var result = false;
+            if(_.tableExists(tableName)) {
+                _._error("The table name '" + tableName + "' already exists.");
+            } else {
+                // cannot use indexOf due to <IE9 incompatibility
+                // de-duplicate the field list
+                var fields_literal = {};
+                for(var i in fields) {
+                    fields_literal[ fields[i] ] = true;
+                }
+                delete fields_literal['ID'];                                    // ID is a reserved field name
+
+                fields = ['ID'];
+                for(var field in fields_literal) {
+                    fields.push(field);
+                }
+                _._createTable(tableName, fields);
+                result = true;
+            }
+
+            return result;
+        },
+
+        /**
+         * drop a table
+         * @access public
+         */
+        dropTable: function(tableName) {
+            _._tableExistsWarn(tableName);
+            _._dropTable(tableName);
+        },
+
+        /**
+         * empty a table
+         * @access public
+         */
+        truncate: function(tableName) {
+            _._tableExistsWarn(tableName);
+            _._truncate(tableName);
+        },
+
+        /**
+         * number of rows in a table
+         * @access public
+         */
+        rowCount: function(tableName) {
+            _._tableExistsWarn(tableName);
+            return _._rowCount(tableName);
+        },
+
+        /**
+         * insert a row
+         * @access public
+         */
+        insert: function(tableName, data) {
+            _._tableExistsWarn(tableName);
+            return _._insert(tableName, _._validateData(tableName, data));
+        },
+
+        /**
+         * update rows
+         * @access public
+         */
+        update: function(tableName, query, updateFunction) {
+            _._tableExistsWarn(tableName);
+            var result_ids = [];
+            if(!query) {
+                result_ids = _._getIDs(tableName);				// there is no query. applies to all records
+            } else if(typeof query == 'object') {				// the query has key-value pairs provided
+                result_ids = _._queryByValues(tableName, _._validFields(tableName, query));
+            } else if(typeof query == 'function') {				// the query has a conditional map function provided
+                result_ids = _._queryByFunction(tableName, query);
+            }
+            return _._update(tableName, result_ids, updateFunction);
+        },
+
+        /**
+         * select rows
+         * @access public
+         */
+        query: function(tableName, query, limit) {
+            _._tableExistsWarn(tableName);
+
+            var result_ids = [];
+            if(!query) {
+                result_ids = _._getIDs(tableName, limit);                       // no conditions given, return all records
+            } else if(typeof query == 'object') {                               // the query has key-value pairs provided
+                result_ids = _._queryByValues(tableName, _._validFields(tableName, query), limit);
+            } else if(typeof query == 'function') {                             // the query has a conditional map function provided
+                result_ids = _._queryByFunction(tableName, query, limit);
+            }
+            return _._select(tableName, result_ids, limit);
+        },
+
+        /**
+         * delete rows
+         * @access public
+         */
+        deleteRows: function(tableName, query) {
+            _._tableExistsWarn(tableName);
+            var result_ids = [];
+            if(!query) {
+                result_ids = _._getIDs(tableName);
+            } else if(typeof query == 'object') {
+                result_ids = _._queryByValues(tableName, _._validFields(tableName, query));
+            } else if(typeof query == 'function') {
+                result_ids = _._queryByFunction(tableName, query);
+            }
+            return _._deleteRows(tableName, result_ids);
+        }
+    };
+    /**
+     * Export
+     */
+    o._=_.o;
+})(window);
